@@ -1,0 +1,148 @@
+---
+title: "p8105_hw6_zz3166"
+author: "Zihan Zhao"
+date: "2024-12-01"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(broom)
+library(purrr)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Problem 2
+
+## Introduction
+This report analyzes homicide data from 50 large U.S. cities to understand the factors associated with solving homicides.
+
+### Data Preparation and Cleaning
+```{r}
+# Load the dataset
+homicide_data <- read_csv("https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv")
+
+# Data cleaning
+homicide_data_clean <- homicide_data %>%
+  mutate(
+    city_state = paste(city, state, sep = ", "),
+    solved_binary = ifelse(disposition == "Closed by arrest", 1, 0),
+    victim_age = as.numeric(victim_age)
+  ) %>%
+  filter(
+    !(city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")),
+    victim_race %in% c("White", "Black"),
+    !is.na(victim_age)
+  )
+```
+
+### Logistic Regression: Baltimore, MD
+For Baltimore, MD, we fit a logistic regression model with `solved_binary` as the outcome and `victim_age`, `victim_sex`, and `victim_race` as predictors.
+```{r}
+# Filter for Baltimore
+baltimore_data <- homicide_data_clean %>% filter(city_state == "Baltimore, MD")
+
+# Fit logistic regression
+baltimore_glm <- glm(
+  solved_binary ~ victim_age + victim_sex + victim_race,
+  data = baltimore_data,
+  family = binomial
+)
+
+# Extract adjusted ORs and CIs
+baltimore_results <- broom::tidy(baltimore_glm, exponentiate = TRUE, conf.int = TRUE) %>%
+  filter(term == "victim_sexMale") %>%
+  select(term, estimate, conf.low, conf.high)
+
+# Display results
+baltimore_results
+```
+
+
+The adjusted odds ratio for solving homicides involving male victims compared to female victims in Baltimore 
+
+- Odds Ratio (Estimate): 0.425
+- 95% Confidence Interval: [0.324, 0.558]
+
+This indicates that male victims are less likely to have their homicides solved compared to female victims, keeping other variables fixed.
+
+
+### Logistic Regression for All Cities
+We repeat the logistic regression for each city and extract the adjusted odds ratios and confidence intervals for solving homicides comparing male to female victims.
+
+```{r}
+# Group data by city and run logistic regression for each
+city_results <- homicide_data_clean %>%
+  group_by(city_state) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~ glm(
+      solved_binary ~ victim_age + victim_sex + victim_race,
+      data = .x,
+      family = binomial
+    )),
+    results = map(model, ~ broom::tidy(.x, exponentiate = TRUE, conf.int = TRUE))
+  ) %>%
+  unnest(results) %>%
+  filter(term == "victim_sexMale") %>%
+  select(city_state, term, estimate, conf.low, conf.high)
+
+print(city_results)
+
+```
+
+### Visualization: Adjusted ORs Across Cities
+We plot the adjusted odds ratios and confidence intervals for solving homicides, organized by city.
+```{r}
+# Plot ORs and CIs
+city_results %>%
+  arrange(estimate) %>%
+  mutate(city_state = fct_reorder(city_state, estimate)) %>%
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +
+  coord_flip() +
+  labs(
+    title = "Adjusted Odds Ratios for Solving Homicides by City",
+    x = "City",
+    y = "Adjusted Odds Ratio (Male vs Female Victims)"
+  )
+
+```
+The plot shows significant variability in adjusted odds ratios (ORs) for solving homicides across cities, with most ORs below 1, indicating male victims are less likely to have their homicides solved compared to female victims. Cities like Baltimore, MD, and Chicago, IL, have particularly low ORs, highlighting disparities, while others like Albuquerque, NM, have ORs above 1, suggesting the opposite trend. Wide confidence intervals for some cities reflect uncertainty due to smaller sample sizes, whereas narrow intervals in cities like Baltimore indicate more robust estimates. These disparities underscore the need to investigate systemic factors and practices that contribute to such differences in homicide resolution.
+
+
+
+# Problem 3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
